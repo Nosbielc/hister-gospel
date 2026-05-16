@@ -128,7 +128,7 @@
     let lastCode = '';
     let currentMusicUrl = '';
     let lastOpenAt = 0;
-    const YOUTUBE_VIDEO_ID_LENGTH = 11;
+    const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
     const OPEN_DEBOUNCE_MS = 2000;
     const SCAN_INTERVAL_MS = 300;
 
@@ -141,8 +141,10 @@
       const raw = String(rawValue || '').trim();
       if (!raw) return '';
 
-      const idMatch = raw.match(new RegExp(`^(?:ytm:)?([A-Za-z0-9_-]{${YOUTUBE_VIDEO_ID_LENGTH}})$`, 'i'));
-      if (idMatch) return `https://music.youtube.com/watch?v=${idMatch[1]}`;
+      const idMatch = raw.match(/^ytm:/i) ? raw.slice(4) : raw;
+      if (YOUTUBE_VIDEO_ID_PATTERN.test(idMatch)) {
+        return `https://music.youtube.com/watch?v=${idMatch}`;
+      }
 
       try {
         const parsed = new URL(raw);
@@ -150,13 +152,13 @@
         if (host === 'music.youtube.com') return parsed.toString();
         if (host === 'www.youtube.com' || host === 'youtube.com') {
           const v = parsed.searchParams.get('v');
-          if (v && new RegExp(`^[A-Za-z0-9_-]{${YOUTUBE_VIDEO_ID_LENGTH}}$`).test(v)) {
+          if (v && YOUTUBE_VIDEO_ID_PATTERN.test(v)) {
             return `https://music.youtube.com/watch?v=${v}`;
           }
         }
         if (host === 'youtu.be') {
           const maybeId = parsed.pathname.slice(1).trim();
-          if (new RegExp(`^[A-Za-z0-9_-]{${YOUTUBE_VIDEO_ID_LENGTH}}$`).test(maybeId)) {
+          if (YOUTUBE_VIDEO_ID_PATTERN.test(maybeId)) {
             return `https://music.youtube.com/watch?v=${maybeId}`;
           }
         }
