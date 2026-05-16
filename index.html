@@ -232,10 +232,11 @@
 
     function encodeBase64Url(value) {
       const bytes = new TextEncoder().encode(value);
-      let binary = '';
-      bytes.forEach(byte => {
-        binary += String.fromCharCode(byte);
-      });
+      const chars = new Array(bytes.length);
+      for (let index = 0; index < bytes.length; index += 1) {
+        chars[index] = String.fromCharCode(bytes[index]);
+      }
+      const binary = chars.join('');
 
       return btoa(binary)
         .replace(/\+/g, '-')
@@ -249,7 +250,10 @@
         .replace(/_/g, '/');
       const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
       const binary = atob(padded);
-      const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
       return new TextDecoder().decode(bytes);
     }
 
@@ -298,7 +302,7 @@
           listId: payload.listId
         });
       } catch (error) {
-        console.debug('QR assinado inválido:', error);
+        console.debug('QR assinado inválido.', error?.message || error);
         return null;
       }
     }
@@ -341,7 +345,7 @@
           }
         }
       } catch (error) {
-        console.debug('QR com URL inválida:', raw, error);
+        console.debug('QR com URL inválida.', error?.message || error);
         return null;
       }
       return null;
