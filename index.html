@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hister Gospel</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #111827;
+      --card: #1f2937;
+      --text: #f9fafb;
+      --muted: #d1d5db;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: linear-gradient(180deg, #0b1022, var(--bg));
+      color: var(--text);
+      min-height: 100dvh;
+      display: grid;
+      place-items: center;
+      padding: 1rem;
+    }
+    .app {
+      width: min(100%, 720px);
+      background: color-mix(in srgb, var(--card), #000 8%);
+      border-radius: 1rem;
+      padding: 1rem;
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.35);
+    }
+    h1 {
+      margin: 0 0 .5rem;
+      font-size: clamp(1.4rem, 4vw, 2rem);
+    }
+    p {
+      margin: .2rem 0 .8rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .video-wrap {
+      position: relative;
+      border-radius: .8rem;
+      overflow: hidden;
+      background: #000;
+      aspect-ratio: 9 / 16;
+      width: 100%;
+      max-height: 70dvh;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .status {
+      margin: .9rem 0 .6rem;
+      min-height: 1.4rem;
+      font-weight: 600;
+    }
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.danger { color: var(--danger); }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .6rem;
+    }
+    button {
+      border: 0;
+      border-radius: .65rem;
+      padding: .7rem 1rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .primary { background: #2563eb; color: white; }
+    .secondary { background: #374151; color: white; }
+    .success { background: #059669; color: white; }
+    button[disabled] { opacity: .55; cursor: not-allowed; }
+    .qr {
+      margin-top: .75rem;
+      color: var(--muted);
+      word-break: break-word;
+      font-size: .92rem;
+    }
+    @media (max-width: 480px) {
+      .app { padding: .8rem; border-radius: .8rem; }
+      .controls button { flex: 1 1 auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>Hister Gospel</h1>
+    <p>Escaneie QR Codes de músicas do YouTube Music usando a câmera do celular.</p>
+
+    <div class="video-wrap">
+      <video id="video" playsinline muted></video>
+    </div>
+
+    <div id="status" class="status warn">Aguardando câmera...</div>
+
+    <div class="controls">
+      <button id="startBtn" class="primary" type="button">Iniciar câmera</button>
+      <button id="stopBtn" class="secondary" type="button" disabled>Parar câmera</button>
+      <button id="openBtn" class="success" type="button" disabled>Abrir música</button>
+    </div>
+
+    <div id="qrText" class="qr">Último QR lido: nenhum</div>
+  </main>
+
+  <script>
+    const video = document.getElementById('video');
+    const statusEl = document.getElementById('status');
+    const qrTextEl = document.getElementById('qrText');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const openBtn = document.getElementById('openBtn');
+
+    let stream = null;
+    let scanning = false;
+    let animationId = null;
+    let lastCode = '';
+    let currentMusicUrl = '';
+    const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_\-]{11}$/;
+
+    function setStatus(text, type = 'warn') {
+      statusEl.textContent = text;
+      statusEl.className = `status ${type}`;
+    }
+
+    function normalizeMusicUrl(rawValue) {
+      const raw = String(rawValue || '').trim();
+      if (!raw) return '';
+
+      const possibleId = raw.match(/^ytm:/i) ? raw.slice(4) : raw;
+      if (YOUTUBE_VIDEO_ID_PATTERN.test(possibleId)) {
+        return `https://music.youtube.com/watch?v=${possibleId}`;
+      }
+
+      try {
+        const parsed = new URL(raw);
+        const host = parsed.hostname.toLowerCase();
+        if (host === 'music.youtube.com') return parsed.toString();
+        if (host === 'www.youtube.com' || host === 'youtube.com') {
+          const v = parsed.searchParams.get('v');
+          if (v && YOUTUBE_VIDEO_ID_PATTERN.test(v)) {
+            return `https://music.youtube.com/watch?v=${v}`;
+          }
+        }
+        if (host === 'youtu.be') {
+          const maybeId = parsed.pathname.slice(1).trim();
+          if (YOUTUBE_VIDEO_ID_PATTERN.test(maybeId)) {
+            return `https://music.youtube.com/watch?v=${maybeId}`;
+          }
+        }
+      } catch (error) {
+        console.debug('QR com URL inválida:', raw, error);
+        return '';
+      }
+      return '';
+    }
+
+    function isTrustedYouTubeUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.hostname === 'music.youtube.com';
+      } catch (error) {
+        return false;
+      }
+    }
+
+    function openMusicUrl(url) {
+      if (!url || !isTrustedYouTubeUrl(url)) return;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function handleDecodedValue(value) {
+      if (!value || value === lastCode) return;
+      lastCode = value;
+      qrTextEl.textContent = `Último QR lido: ${value}`;
+
+      const normalized = normalizeMusicUrl(value);
+      if (!normalized) {
+        currentMusicUrl = '';
+        openBtn.disabled = true;
+        setStatus('QR lido, mas não é um link/ID válido do YouTube Music.', 'danger');
+        return;
+      }
+
+      currentMusicUrl = normalized;
+      openBtn.disabled = false;
+      setStatus('QR válido detectado! Toque em "Abrir música".', 'ok');
+    }
+
+    async function scanWithBarcodeDetector() {
+      if (!('BarcodeDetector' in window)) return false;
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      const scan = async () => {
+        if (!scanning) return;
+        try {
+          const barcodes = await detector.detect(video);
+          if (barcodes && barcodes.length > 0) handleDecodedValue(barcodes[0].rawValue);
+        } catch (error) {
+          console.debug('Falha ao detectar QR com BarcodeDetector:', error);
+        }
+        animationId = requestAnimationFrame(scan);
+      };
+      scan();
+      return true;
+    }
+
+    async function startCamera() {
+      if (scanning) return;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: 'environment' } }
+        });
+        video.srcObject = stream;
+        await video.play();
+
+        scanning = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        setStatus('Câmera ativa. Escaneando QR Code...', 'ok');
+
+        const usingNative = await scanWithBarcodeDetector();
+        if (!usingNative) {
+          setStatus('Este navegador não suporta leitura de QR. Tente usar Chrome, Edge ou outro navegador compatível.', 'danger');
+        }
+      } catch (error) {
+        console.error('Falha ao iniciar câmera:', error);
+        setStatus('Não foi possível acessar a câmera. Verifique permissões e se o site está em HTTPS.', 'danger');
+      }
+    }
+
+    function stopCamera() {
+      scanning = false;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      if (animationId) cancelAnimationFrame(animationId);
+      animationId = null;
+      if (stream) stream.getTracks().forEach(track => track.stop());
+      stream = null;
+      video.srcObject = null;
+      setStatus('Câmera parada.', 'warn');
+    }
+
+    startBtn.addEventListener('click', startCamera);
+    stopBtn.addEventListener('click', stopCamera);
+    openBtn.addEventListener('click', () => openMusicUrl(currentMusicUrl));
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && scanning) stopCamera();
+    });
+  </script>
+</body>
+</html>
