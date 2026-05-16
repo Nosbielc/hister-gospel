@@ -113,7 +113,6 @@
     <div id="qrText" class="qr">Último QR lido: nenhum</div>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
   <script>
     const video = document.getElementById('video');
     const statusEl = document.getElementById('status');
@@ -129,6 +128,9 @@
     let lastCode = '';
     let currentMusicUrl = '';
     let lastOpenAt = 0;
+    const YOUTUBE_VIDEO_ID_LENGTH = 11;
+    const OPEN_DEBOUNCE_MS = 2000;
+    const SCAN_INTERVAL_MS = 300;
 
     function setStatus(text, type = 'warn') {
       statusEl.textContent = text;
@@ -139,7 +141,7 @@
       const raw = String(rawValue || '').trim();
       if (!raw) return '';
 
-      const idMatch = raw.match(/^(?:ytm:)?([A-Za-z0-9_-]{11})$/i);
+      const idMatch = raw.match(new RegExp(`^(?:ytm:)?([A-Za-z0-9_-]{${YOUTUBE_VIDEO_ID_LENGTH}})$`, 'i'));
       if (idMatch) return `https://music.youtube.com/watch?v=${idMatch[1]}`;
 
       try {
@@ -148,17 +150,18 @@
         if (host === 'music.youtube.com') return parsed.toString();
         if (host === 'www.youtube.com' || host === 'youtube.com') {
           const v = parsed.searchParams.get('v');
-          if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) {
+          if (v && new RegExp(`^[A-Za-z0-9_-]{${YOUTUBE_VIDEO_ID_LENGTH}}$`).test(v)) {
             return `https://music.youtube.com/watch?v=${v}`;
           }
         }
         if (host === 'youtu.be') {
-          const maybeId = parsed.pathname.replace('/', '').trim();
-          if (/^[A-Za-z0-9_-]{11}$/.test(maybeId)) {
+          const maybeId = parsed.pathname.slice(1).trim();
+          if (new RegExp(`^[A-Za-z0-9_-]{${YOUTUBE_VIDEO_ID_LENGTH}}$`).test(maybeId)) {
             return `https://music.youtube.com/watch?v=${maybeId}`;
           }
         }
-      } catch (_) {
+      } catch (ignored) {
+        console.debug('QR com URL inválida:', ignored);
         return '';
       }
       return '';
@@ -188,7 +191,7 @@
       setStatus('QR válido detectado! Preparando música...', 'ok');
 
       const now = Date.now();
-      if (now - lastOpenAt > 2000) {
+      if (now - lastOpenAt > OPEN_DEBOUNCE_MS) {
         lastOpenAt = now;
         openMusicUrl(currentMusicUrl);
       }
@@ -202,7 +205,9 @@
         try {
           const barcodes = await detector.detect(video);
           if (barcodes && barcodes.length > 0) handleDecodedValue(barcodes[0].rawValue);
-        } catch (_) {}
+        } catch (ignored) {
+          console.debug('Falha ao detectar QR com BarcodeDetector:', ignored);
+        }
         animationId = requestAnimationFrame(scan);
       };
       scan();
@@ -220,7 +225,7 @@
         const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
         const result = window.jsQR(imageData.data, imageData.width, imageData.height);
         if (result && result.data) handleDecodedValue(result.data);
-      }, 300);
+      }, SCAN_INTERVAL_MS);
     }
 
     async function startCamera() {
@@ -239,7 +244,11 @@
         setStatus('Câmera ativa. Escaneando QR Code...', 'ok');
 
         const usingNative = await scanWithBarcodeDetector();
-        if (!usingNative) scanWithJsQR();
+        if (!usingNative && window.jsQR) {
+          scanWithJsQR();
+        } else if (!usingNative) {
+          setStatus('Este navegador não suporta leitura de QR sem BarcodeDetector.', 'danger');
+        }
       } catch (error) {
         setStatus('Não foi possível acessar a câmera. Verifique as permissões.', 'danger');
       }
