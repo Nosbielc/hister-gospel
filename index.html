@@ -381,7 +381,7 @@
         playerFrame = document.createElement('iframe');
         playerFrame.className = 'background-player';
         playerFrame.title = 'Reprodutor em segundo plano';
-        playerFrame.allow = 'autoplay; encrypted-media; picture-in-picture';
+        playerFrame.allow = 'autoplay; encrypted-media';
         playerFrame.referrerPolicy = 'strict-origin-when-cross-origin';
         playerFrame.setAttribute('aria-hidden', 'true');
         playerHostEl.appendChild(playerFrame);
@@ -419,7 +419,7 @@
 
     async function generateSignedQrCodes() {
       const items = playlistInput.value
-        .split(/\n+/)
+        .split(/\r?\n|\r/g)
         .map(item => item.trim())
         .filter(Boolean);
 
