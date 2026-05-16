@@ -137,9 +137,9 @@
       const raw = String(rawValue || '').trim();
       if (!raw) return '';
 
-      const idMatch = raw.match(/^ytm:/i) ? raw.slice(4) : raw;
-      if (YOUTUBE_VIDEO_ID_PATTERN.test(idMatch)) {
-        return `https://music.youtube.com/watch?v=${idMatch}`;
+      const possibleId = raw.match(/^ytm:/i) ? raw.slice(4) : raw;
+      if (YOUTUBE_VIDEO_ID_PATTERN.test(possibleId)) {
+        return `https://music.youtube.com/watch?v=${possibleId}`;
       }
 
       try {
@@ -159,14 +159,23 @@
           }
         }
       } catch (error) {
-        console.debug('QR com URL inválida:', error);
+        console.debug('QR com URL inválida:', raw, error);
         return '';
       }
       return '';
     }
 
+    function isTrustedYouTubeUrl(url) {
+      try {
+        const parsed = new URL(url);
+        return parsed.hostname === 'music.youtube.com';
+      } catch (error) {
+        return false;
+      }
+    }
+
     function openMusicUrl(url) {
-      if (!url) return;
+      if (!url || !isTrustedYouTubeUrl(url)) return;
       window.open(url, '_blank', 'noopener,noreferrer');
     }
 
