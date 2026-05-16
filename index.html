@@ -191,7 +191,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous" onerror="window.__jsQrLoadFailed = true"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js" crossorigin="anonymous" onerror="window.__qrCodeLoadFailed = true"></script>
+  <script src="./vendor/qrcode.bundle.js" onerror="window.__qrCodeLoadFailed = true"></script>
   <script>
     const video = document.getElementById('video');
     const statusEl = document.getElementById('status');
@@ -215,9 +215,10 @@
     let lastCode = '';
     let currentMusicTarget = null;
     let playerFrame = null;
+    const APP_NAME = 'hister-gospel';
     const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_\-]{11}$/;
     const YOUTUBE_LIST_ID_PATTERN = /^[A-Za-z0-9_\-]+$/;
-    const APP_QR_PREFIX = 'hister-gospel:v1:';
+    const APP_QR_PREFIX = `${APP_NAME}:v1:`;
 
     function setStatus(text, type = 'warn') {
       statusEl.textContent = text;
@@ -246,7 +247,7 @@
       const normalized = String(value || '')
         .replace(/-/g, '+')
         .replace(/_/g, '/');
-      const padded = normalized + '==='.slice((normalized.length + 3) % 4);
+      const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
       const binary = atob(padded);
       const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
       return new TextDecoder().decode(bytes);
@@ -276,7 +277,7 @@
 
     function serializeSignedTarget(target) {
       const payload = {
-        app: 'hister-gospel',
+        app: APP_NAME,
         version: 1,
         kind: target.kind,
         videoId: target.videoId || '',
@@ -291,7 +292,7 @@
 
       try {
         const payload = JSON.parse(decodeBase64Url(raw.slice(APP_QR_PREFIX.length)));
-        if (payload.app !== 'hister-gospel' || payload.version !== 1) return null;
+        if (payload.app !== APP_NAME || payload.version !== 1) return null;
         return createMusicTarget({
           videoId: payload.videoId,
           listId: payload.listId
