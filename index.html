@@ -70,6 +70,31 @@
       flex-wrap: wrap;
       gap: .6rem;
     }
+    .panel {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid color-mix(in srgb, var(--muted), transparent 75%);
+    }
+    .panel h2 {
+      margin: 0 0 .5rem;
+      font-size: 1.1rem;
+    }
+    .field-label {
+      display: block;
+      margin: .8rem 0 .4rem;
+      font-weight: 600;
+    }
+    textarea {
+      width: 100%;
+      min-height: 6.5rem;
+      border: 1px solid color-mix(in srgb, var(--muted), transparent 55%);
+      border-radius: .75rem;
+      padding: .8rem;
+      font: inherit;
+      color: inherit;
+      background: color-mix(in srgb, var(--card), #000 10%);
+      resize: vertical;
+    }
     button {
       border: 0;
       border-radius: .65rem;
@@ -86,6 +111,42 @@
       color: var(--muted);
       word-break: break-word;
       font-size: .92rem;
+    }
+    .qr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: .9rem;
+      margin-top: .8rem;
+    }
+    .qr-card {
+      padding: .8rem;
+      border-radius: .9rem;
+      background: color-mix(in srgb, var(--card), #000 12%);
+      display: grid;
+      gap: .65rem;
+      justify-items: center;
+      text-align: center;
+    }
+    .qr-card canvas,
+    .qr-card img {
+      width: min(100%, 220px);
+      height: auto;
+      border-radius: .7rem;
+      background: white;
+      padding: .55rem;
+    }
+    .qr-card strong,
+    .qr-card small {
+      width: 100%;
+      word-break: break-word;
+    }
+    .background-player {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+      border: 0;
     }
     @media (max-width: 480px) {
       .app { padding: .8rem; border-radius: .8rem; }
@@ -111,9 +172,26 @@
     </div>
 
     <div id="qrText" class="qr">Último QR lido: nenhum</div>
+
+    <section class="panel" aria-labelledby="generatorTitle">
+      <h2 id="generatorTitle">Gerar QR codes da lista</h2>
+      <p>Cole um link do YouTube Music (lista ou música) ou vários links, um por linha. O app gera QR codes assinados que o leitor reconhece.</p>
+      <label class="field-label" for="playlistInput">Link da lista / músicas</label>
+      <textarea id="playlistInput" placeholder="https://music.youtube.com/playlist?list=..."></textarea>
+      <div class="controls">
+        <button id="generateBtn" class="primary" type="button">Gerar QR codes</button>
+        <button id="clearBtn" class="secondary" type="button">Limpar</button>
+      </div>
+      <div id="generatorStatus" class="status warn">Informe ao menos um link do YouTube Music para gerar o QR.</div>
+      <div id="qrResults" class="qr-grid" aria-live="polite"></div>
+    </section>
+
+    <div id="playerStatus" class="qr">Nenhuma música em segundo plano.</div>
+    <div id="playerHost"></div>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous" onerror="window.__jsQrLoadFailed = true"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous" onerror="window.jsQrLoadFailed = true"></script>
+  <script src="./vendor/qrcode.bundle.js" onerror="window.qrCodeLoadFailed = true"></script>
   <script>
     const video = document.getElementById('video');
     const statusEl = document.getElementById('status');
@@ -121,6 +199,13 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const openBtn = document.getElementById('openBtn');
+    const playlistInput = document.getElementById('playlistInput');
+    const generateBtn = document.getElementById('generateBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const generatorStatusEl = document.getElementById('generatorStatus');
+    const qrResultsEl = document.getElementById('qrResults');
+    const playerStatusEl = document.getElementById('playerStatus');
+    const playerHostEl = document.getElementById('playerHost');
     const scanCanvas = document.createElement('canvas');
     const scanContext = scanCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -128,58 +213,255 @@
     let scanning = false;
     let animationId = null;
     let lastCode = '';
-    let currentMusicUrl = '';
+    let currentMusicTarget = null;
+    let playerFrame = null;
+    const APP_NAME = 'hister-gospel';
     const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_\-]{11}$/;
+    const YOUTUBE_LIST_ID_PATTERN = /^[A-Za-z0-9_\-]+$/;
+    const APP_QR_PREFIX = `${APP_NAME}:v1:`;
 
     function setStatus(text, type = 'warn') {
       statusEl.textContent = text;
       statusEl.className = `status ${type}`;
     }
 
-    function normalizeMusicUrl(rawValue) {
+    function setGeneratorStatus(text, type = 'warn') {
+      generatorStatusEl.textContent = text;
+      generatorStatusEl.className = `status ${type}`;
+    }
+
+    function encodeBase64Url(value) {
+      const bytes = new TextEncoder().encode(value);
+      const chars = new Array(bytes.length);
+      for (let index = 0; index < bytes.length; index += 1) {
+        chars[index] = String.fromCharCode(bytes[index]);
+      }
+      const binary = chars.join('');
+
+      return btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+    }
+
+    function decodeBase64Url(value) {
+      const normalized = String(value || '')
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - (normalized.length % 4)) % 4);
+      const binary = atob(padded);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return new TextDecoder().decode(bytes);
+    }
+
+    function createMusicTarget({ videoId = '', listId = '' }) {
+      const safeVideoId = String(videoId || '').trim();
+      const safeListId = String(listId || '').trim();
+
+      if (!safeVideoId && !safeListId) return null;
+      if (safeVideoId && !YOUTUBE_VIDEO_ID_PATTERN.test(safeVideoId)) return null;
+      if (safeListId && !YOUTUBE_LIST_ID_PATTERN.test(safeListId)) return null;
+
+      const url = new URL(
+        safeVideoId ? 'https://music.youtube.com/watch' : 'https://music.youtube.com/playlist'
+      );
+      if (safeVideoId) url.searchParams.set('v', safeVideoId);
+      if (safeListId) url.searchParams.set('list', safeListId);
+
+      return {
+        kind: safeVideoId ? 'track' : 'playlist',
+        videoId: safeVideoId,
+        listId: safeListId,
+        url: url.toString()
+      };
+    }
+
+    function serializeSignedTarget(target) {
+      const payload = {
+        app: APP_NAME,
+        version: 1,
+        kind: target.kind,
+        videoId: target.videoId || '',
+        listId: target.listId || ''
+      };
+      return `${APP_QR_PREFIX}${encodeBase64Url(JSON.stringify(payload))}`;
+    }
+
+    function parseSignedTarget(rawValue) {
       const raw = String(rawValue || '').trim();
-      if (!raw) return '';
+      if (!raw.startsWith(APP_QR_PREFIX)) return null;
+
+      try {
+        const payload = JSON.parse(decodeBase64Url(raw.slice(APP_QR_PREFIX.length)));
+        if (payload.app !== APP_NAME || payload.version !== 1) return null;
+        return createMusicTarget({
+          videoId: payload.videoId,
+          listId: payload.listId
+        });
+      } catch (error) {
+        console.debug('QR assinado inválido.', error?.message || error);
+        return null;
+      }
+    }
+
+    function normalizeMusicTarget(rawValue) {
+      const raw = String(rawValue || '').trim();
+      if (!raw) return null;
+
+      const signedTarget = parseSignedTarget(raw);
+      if (signedTarget) return signedTarget;
 
       const possibleId = raw.match(/^ytm:/i) ? raw.slice(4) : raw;
       if (YOUTUBE_VIDEO_ID_PATTERN.test(possibleId)) {
-        return `https://music.youtube.com/watch?v=${possibleId}`;
+        return createMusicTarget({ videoId: possibleId });
       }
 
       try {
         const parsed = new URL(raw);
         const host = parsed.hostname.toLowerCase();
-        if (host === 'music.youtube.com') return parsed.toString();
+        if (host === 'music.youtube.com') {
+          return createMusicTarget({
+            videoId: parsed.searchParams.get('v'),
+            listId: parsed.searchParams.get('list')
+          });
+        }
         if (host === 'www.youtube.com' || host === 'youtube.com') {
           const v = parsed.searchParams.get('v');
-          if (v && YOUTUBE_VIDEO_ID_PATTERN.test(v)) {
-            return `https://music.youtube.com/watch?v=${v}`;
+          const list = parsed.searchParams.get('list');
+          if (v || list) {
+            return createMusicTarget({ videoId: v, listId: list });
           }
         }
         if (host === 'youtu.be') {
           const maybeId = parsed.pathname.slice(1).trim();
           if (YOUTUBE_VIDEO_ID_PATTERN.test(maybeId)) {
-            return `https://music.youtube.com/watch?v=${maybeId}`;
+            return createMusicTarget({
+              videoId: maybeId,
+              listId: parsed.searchParams.get('list')
+            });
           }
         }
       } catch (error) {
-        console.debug('QR com URL inválida:', raw, error);
-        return '';
+        console.debug('QR com URL inválida.', error?.message || error);
+        return null;
       }
-      return '';
+      return null;
     }
 
-    function isTrustedYouTubeUrl(url) {
-      try {
-        const parsed = new URL(url);
-        return parsed.hostname === 'music.youtube.com';
-      } catch (error) {
-        return false;
-      }
+    function describeTarget(target) {
+      if (!target) return 'nenhum';
+      if (target.kind === 'playlist') return `Lista ${target.listId}`;
+      if (target.listId) return `Música ${target.videoId} da lista ${target.listId}`;
+      return `Música ${target.videoId}`;
     }
 
-    function openMusicUrl(url) {
-      if (!url || !isTrustedYouTubeUrl(url)) return;
-      window.open(url, '_blank', 'noopener,noreferrer');
+    function buildPlayerUrl(target) {
+      if (!target) return '';
+
+      const playerUrl = new URL(
+        target.videoId
+          ? `https://www.youtube.com/embed/${target.videoId}`
+          : 'https://www.youtube.com/embed/videoseries'
+      );
+      if (target.listId) playerUrl.searchParams.set('list', target.listId);
+      playerUrl.searchParams.set('autoplay', '1');
+      playerUrl.searchParams.set('playsinline', '1');
+      playerUrl.searchParams.set('rel', '0');
+      return playerUrl.toString();
+    }
+
+    function openMusicUrl(target) {
+      const playerUrl = buildPlayerUrl(target);
+      if (!playerUrl) return;
+
+      if (!playerFrame) {
+        playerFrame = document.createElement('iframe');
+        playerFrame.className = 'background-player';
+        playerFrame.title = 'Reprodutor em segundo plano';
+        playerFrame.allow = 'autoplay; encrypted-media';
+        playerFrame.referrerPolicy = 'strict-origin-when-cross-origin';
+        playerFrame.setAttribute('aria-hidden', 'true');
+        playerHostEl.appendChild(playerFrame);
+      }
+
+      playerFrame.src = playerUrl;
+      playerStatusEl.textContent = `${describeTarget(target)} em reprodução em segundo plano.`;
+      setStatus('Reprodução iniciada em segundo plano.', 'ok');
+    }
+
+    function clearQrResults() {
+      qrResultsEl.replaceChildren();
+    }
+
+    function renderQrCanvas(canvas, value) {
+      return new Promise((resolve, reject) => {
+        if (window.qrCodeLoadFailed || !window.QRCode || typeof window.QRCode.toCanvas !== 'function') {
+          reject(new Error('Biblioteca de QR Code indisponível.'));
+          return;
+        }
+
+        window.QRCode.toCanvas(canvas, value, {
+          width: 220,
+          margin: 1,
+          color: {
+            dark: '#111827',
+            light: '#ffffffff'
+          }
+        }, error => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+    }
+
+    async function generateSignedQrCodes() {
+      const items = playlistInput.value
+        .split(/\r?\n|\r/g)
+        .map(item => item.trim())
+        .filter(Boolean);
+
+      clearQrResults();
+
+      if (items.length === 0) {
+        setGeneratorStatus('Informe ao menos um link do YouTube Music para gerar o QR.', 'warn');
+        return;
+      }
+
+      const validTargets = items
+        .map(raw => ({ raw, target: normalizeMusicTarget(raw) }))
+        .filter(item => item.target);
+
+      if (validTargets.length === 0) {
+        setGeneratorStatus('Nenhum link válido do YouTube Music foi encontrado.', 'danger');
+        return;
+      }
+
+      for (const [index, item] of validTargets.entries()) {
+        const card = document.createElement('article');
+        card.className = 'qr-card';
+
+        const title = document.createElement('strong');
+        title.textContent = `${index + 1}. ${describeTarget(item.target)}`;
+
+        const canvas = document.createElement('canvas');
+        await renderQrCanvas(canvas, serializeSignedTarget(item.target));
+
+        const details = document.createElement('small');
+        details.textContent = item.target.url;
+
+        card.append(title, canvas, details);
+        qrResultsEl.appendChild(card);
+      }
+
+      const invalidCount = items.length - validTargets.length;
+      if (invalidCount > 0) {
+        setGeneratorStatus(`${validTargets.length} QR code(s) gerado(s). ${invalidCount} item(ns) inválido(s) foram ignorados.`, 'warn');
+      } else {
+        setGeneratorStatus(`${validTargets.length} QR code(s) gerado(s) com assinatura Hister Gospel.`, 'ok');
+      }
     }
 
     function handleDecodedValue(value) {
@@ -187,17 +469,18 @@
       lastCode = value;
       qrTextEl.textContent = `Último QR lido: ${value}`;
 
-      const normalized = normalizeMusicUrl(value);
+      const normalized = normalizeMusicTarget(value);
       if (!normalized) {
-        currentMusicUrl = '';
+        currentMusicTarget = null;
         openBtn.disabled = true;
         setStatus('QR lido, mas não é um link/ID válido do YouTube Music.', 'danger');
         return;
       }
 
-      currentMusicUrl = normalized;
+      currentMusicTarget = normalized;
       openBtn.disabled = false;
-      setStatus('QR válido detectado! Toque em "Abrir música".', 'ok');
+      qrTextEl.textContent = `Último QR lido: ${normalized.url}`;
+      setStatus('QR válido detectado! Toque em "Abrir música" para tocar em segundo plano.', 'ok');
     }
 
     async function scanWithBarcodeDetector() {
@@ -224,7 +507,7 @@
     }
 
     async function scanWithJsQr() {
-      if (window.__jsQrLoadFailed || typeof window.jsQR !== 'function' || !scanContext) return false;
+      if (window.jsQrLoadFailed || typeof window.jsQR !== 'function' || !scanContext) return false;
       const scan = () => {
         if (!scanning) return;
         const width = video.videoWidth;
@@ -293,7 +576,23 @@
 
     startBtn.addEventListener('click', startCamera);
     stopBtn.addEventListener('click', stopCamera);
-    openBtn.addEventListener('click', () => openMusicUrl(currentMusicUrl));
+    openBtn.addEventListener('click', () => openMusicUrl(currentMusicTarget));
+    generateBtn.addEventListener('click', async () => {
+      try {
+        generateBtn.disabled = true;
+        await generateSignedQrCodes();
+      } catch (error) {
+        console.error('Falha ao gerar QR codes:', error);
+        setGeneratorStatus('Não foi possível gerar os QR codes agora.', 'danger');
+      } finally {
+        generateBtn.disabled = false;
+      }
+    });
+    clearBtn.addEventListener('click', () => {
+      playlistInput.value = '';
+      clearQrResults();
+      setGeneratorStatus('Informe ao menos um link do YouTube Music para gerar o QR.', 'warn');
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && scanning) stopCamera();
     });
