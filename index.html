@@ -190,8 +190,8 @@
     <div id="playerHost"></div>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous" onerror="window.__jsQrLoadFailed = true"></script>
-  <script src="./vendor/qrcode.bundle.js" onerror="window.__qrCodeLoadFailed = true"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous" onerror="window.jsQrLoadFailed = true"></script>
+  <script src="./vendor/qrcode.bundle.js" onerror="window.qrCodeLoadFailed = true"></script>
   <script>
     const video = document.getElementById('video');
     const statusEl = document.getElementById('status');
@@ -398,7 +398,7 @@
 
     function renderQrCanvas(canvas, value) {
       return new Promise((resolve, reject) => {
-        if (window.__qrCodeLoadFailed || !window.QRCode || typeof window.QRCode.toCanvas !== 'function') {
+        if (window.qrCodeLoadFailed || !window.QRCode || typeof window.QRCode.toCanvas !== 'function') {
           reject(new Error('Biblioteca de QR Code indisponível.'));
           return;
         }
@@ -507,7 +507,7 @@
     }
 
     async function scanWithJsQr() {
-      if (window.__jsQrLoadFailed || typeof window.jsQR !== 'function' || !scanContext) return false;
+      if (window.jsQrLoadFailed || typeof window.jsQR !== 'function' || !scanContext) return false;
       const scan = () => {
         if (!scanning) return;
         const width = video.videoWidth;
