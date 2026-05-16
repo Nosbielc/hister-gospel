@@ -2,6 +2,14 @@
 
 Aplicativo HTML5 estático para o jogo Hister Gospel.
 
+## Publicar no GitHub Pages
+
+1. Vá em **Settings > Pages** no repositório.
+2. Em **Build and deployment**, selecione **Source: GitHub Actions**.
+3. Faça push na branch `main` para disparar o workflow de deploy.
+4. Após a execução, o site ficará disponível em:
+   `https://nosbielc.github.io/hister-gospel/`
+
 ## Como usar
 
 1. Abra `index.html` no navegador (ou publique no GitHub Pages).
