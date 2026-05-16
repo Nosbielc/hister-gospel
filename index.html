@@ -123,14 +123,10 @@
 
     let stream = null;
     let scanning = false;
-    let scanTimer = null;
     let animationId = null;
     let lastCode = '';
     let currentMusicUrl = '';
-    let lastOpenAt = 0;
     const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_\-]{11}$/;
-    const OPEN_DEBOUNCE_MS = 2000;
-    const SCAN_INTERVAL_MS = 300;
 
     function setStatus(text, type = 'warn') {
       statusEl.textContent = text;
@@ -171,8 +167,7 @@
 
     function openMusicUrl(url) {
       if (!url) return;
-      const opened = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!opened) setStatus('Música detectada. Toque em "Abrir música".', 'warn');
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
 
     function handleDecodedValue(value) {
@@ -190,13 +185,7 @@
 
       currentMusicUrl = normalized;
       openBtn.disabled = false;
-      setStatus('QR válido detectado! Preparando música...', 'ok');
-
-      const now = Date.now();
-      if (now - lastOpenAt > OPEN_DEBOUNCE_MS) {
-        lastOpenAt = now;
-        openMusicUrl(currentMusicUrl);
-      }
+      setStatus('QR válido detectado! Toque em "Abrir música".', 'ok');
     }
 
     async function scanWithBarcodeDetector() {
@@ -216,20 +205,6 @@
       return true;
     }
 
-    function scanWithJsQR() {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d', { willReadFrequently: true });
-      scanTimer = setInterval(() => {
-        if (!scanning || video.videoWidth === 0 || video.videoHeight === 0) return;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        const result = window.jsQR(imageData.data, imageData.width, imageData.height);
-        if (result && result.data) handleDecodedValue(result.data);
-      }, SCAN_INTERVAL_MS);
-    }
-
     async function startCamera() {
       if (scanning) return;
       try {
@@ -246,13 +221,12 @@
         setStatus('Câmera ativa. Escaneando QR Code...', 'ok');
 
         const usingNative = await scanWithBarcodeDetector();
-        if (!usingNative && window.jsQR) {
-          scanWithJsQR();
-        } else if (!usingNative) {
+        if (!usingNative) {
           setStatus('Este navegador não suporta leitura de QR. Tente usar Chrome, Edge ou outro navegador compatível.', 'danger');
         }
       } catch (error) {
-        setStatus('Não foi possível acessar a câmera. Verifique as permissões.', 'danger');
+        console.error('Falha ao iniciar câmera:', error);
+        setStatus('Não foi possível acessar a câmera. Verifique permissões e se o site está em HTTPS.', 'danger');
       }
     }
 
@@ -260,9 +234,7 @@
       scanning = false;
       startBtn.disabled = false;
       stopBtn.disabled = true;
-      if (scanTimer) clearInterval(scanTimer);
       if (animationId) cancelAnimationFrame(animationId);
-      scanTimer = null;
       animationId = null;
       if (stream) stream.getTracks().forEach(track => track.stop());
       stream = null;
