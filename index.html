@@ -113,6 +113,7 @@
     <div id="qrText" class="qr">Último QR lido: nenhum</div>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous"></script>
   <script>
     const video = document.getElementById('video');
     const statusEl = document.getElementById('status');
@@ -120,6 +121,8 @@
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const openBtn = document.getElementById('openBtn');
+    const scanCanvas = document.createElement('canvas');
+    const scanContext = scanCanvas.getContext('2d', { willReadFrequently: true });
 
     let stream = null;
     let scanning = false;
@@ -199,7 +202,13 @@
 
     async function scanWithBarcodeDetector() {
       if (!('BarcodeDetector' in window)) return false;
-      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      let detector;
+      try {
+        detector = new BarcodeDetector({ formats: ['qr_code'] });
+      } catch (error) {
+        console.debug('BarcodeDetector indisponível para QR:', error);
+        return false;
+      }
       const scan = async () => {
         if (!scanning) return;
         try {
@@ -207,6 +216,34 @@
           if (barcodes && barcodes.length > 0) handleDecodedValue(barcodes[0].rawValue);
         } catch (error) {
           console.debug('Falha ao detectar QR com BarcodeDetector:', error);
+        }
+        animationId = requestAnimationFrame(scan);
+      };
+      scan();
+      return true;
+    }
+
+    async function scanWithJsQr() {
+      if (typeof window.jsQR !== 'function' || !scanContext) return false;
+      const scan = () => {
+        if (!scanning) return;
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        if (width > 0 && height > 0) {
+          if (scanCanvas.width !== width || scanCanvas.height !== height) {
+            scanCanvas.width = width;
+            scanCanvas.height = height;
+          }
+          scanContext.drawImage(video, 0, 0, width, height);
+          try {
+            const imageData = scanContext.getImageData(0, 0, width, height);
+            const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: 'dontInvert'
+            });
+            if (code && code.data) handleDecodedValue(code.data);
+          } catch (error) {
+            console.debug('Falha ao detectar QR com jsQR:', error);
+          }
         }
         animationId = requestAnimationFrame(scan);
       };
@@ -231,7 +268,10 @@
 
         const usingNative = await scanWithBarcodeDetector();
         if (!usingNative) {
-          setStatus('Este navegador não suporta leitura de QR. Tente usar Chrome, Edge ou outro navegador compatível.', 'danger');
+          const usingFallback = await scanWithJsQr();
+          if (!usingFallback) {
+            setStatus('A câmera foi iniciada, mas a leitura de QR não está disponível neste navegador/dispositivo.', 'danger');
+          }
         }
       } catch (error) {
         console.error('Falha ao iniciar câmera:', error);
