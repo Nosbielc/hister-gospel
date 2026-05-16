@@ -128,7 +128,7 @@
     let lastCode = '';
     let currentMusicUrl = '';
     let lastOpenAt = 0;
-    const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+    const YOUTUBE_VIDEO_ID_PATTERN = /^[A-Za-z0-9_\-]{11}$/;
     const OPEN_DEBOUNCE_MS = 2000;
     const SCAN_INTERVAL_MS = 300;
 
@@ -162,8 +162,8 @@
             return `https://music.youtube.com/watch?v=${maybeId}`;
           }
         }
-      } catch (ignored) {
-        console.debug('QR com URL inválida:', ignored);
+      } catch (error) {
+        console.debug('QR com URL inválida:', error);
         return '';
       }
       return '';
@@ -207,8 +207,8 @@
         try {
           const barcodes = await detector.detect(video);
           if (barcodes && barcodes.length > 0) handleDecodedValue(barcodes[0].rawValue);
-        } catch (ignored) {
-          console.debug('Falha ao detectar QR com BarcodeDetector:', ignored);
+        } catch (error) {
+          console.debug('Falha ao detectar QR com BarcodeDetector:', error);
         }
         animationId = requestAnimationFrame(scan);
       };
@@ -249,7 +249,7 @@
         if (!usingNative && window.jsQR) {
           scanWithJsQR();
         } else if (!usingNative) {
-          setStatus('Este navegador não suporta leitura de QR sem BarcodeDetector.', 'danger');
+          setStatus('Este navegador não suporta leitura de QR. Tente usar Chrome, Edge ou outro navegador compatível.', 'danger');
         }
       } catch (error) {
         setStatus('Não foi possível acessar a câmera. Verifique as permissões.', 'danger');
