@@ -113,7 +113,7 @@
     <div id="qrText" class="qr">Último QR lido: nenhum</div>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js" integrity="sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx" crossorigin="anonymous" onerror="window.__jsQrLoadFailed = true"></script>
   <script>
     const video = document.getElementById('video');
     const statusEl = document.getElementById('status');
@@ -224,7 +224,7 @@
     }
 
     async function scanWithJsQr() {
-      if (typeof window.jsQR !== 'function' || !scanContext) return false;
+      if (window.__jsQrLoadFailed || typeof window.jsQR !== 'function' || !scanContext) return false;
       const scan = () => {
         if (!scanning) return;
         const width = video.videoWidth;
@@ -270,7 +270,7 @@
         if (!usingNative) {
           const usingFallback = await scanWithJsQr();
           if (!usingFallback) {
-            setStatus('A câmera foi iniciada, mas a leitura de QR não está disponível neste navegador/dispositivo.', 'danger');
+            setStatus('A câmera foi iniciada, mas nenhum leitor de QR pôde ser ativado neste navegador/dispositivo.', 'danger');
           }
         }
       } catch (error) {
